@@ -3,7 +3,9 @@
 Script to filter, download and audit Wordpress plugins using the official WP's API and run Semgrep over them while storing output in a SQLite database.
 
 Full write-up: https://projectblack.io/blog/cve-hunting-at-scale/
+
 Original GitHub repo: https://github.com/prjblk/wordpress-audit-automation
+
 
 # Getting Started
 
@@ -56,7 +58,7 @@ triaged BOOLEAN
 
 ## Example Usage
 
-```sh
+```
 $ python3 wp-plugin-downlauditor.py -h
 usage: wp-plugin-downlauditor.py [-h] [-m {download,audit,both}] [-d DOWNLOAD_DIR] [-o OUTPUT_DB] [--clear-results] [--last-updated LAST_UPDATED] [--active-installs ACTIVE_INSTALLS] [--author AUTHOR]
                                  [--tag TAG] [--search SEARCH] [--config CONFIG] [--verbose]

@@ -6,6 +6,7 @@ Full write-up: https://projectblack.io/blog/cve-hunting-at-scale/
 
 Original GitHub repo: https://github.com/prjblk/wordpress-audit-automation
 
+Useful forked repo: https://github.com/m3ssap0/wordpress-audit-automation
 
 # Getting Started
 
@@ -23,12 +24,13 @@ semgrep login
 ```
 4. Run the script
 5. Triage output
+6. Start a ready-to-go wordpress instance with `docker compose` and test the plugin dinamically
 
 ## Description
 
 The script works in three different modes:
 - **download**: Download worpress plugins using the [official WP APIs and specific filters](https://developer.wordpress.org/reference/functions/plugins_api/). Plugins are stored inside the `plugins` folder (`download-dir/plugins/plugin-name/version/`). Plugin information are stored inside a SQLite database.
-- **audit**: Audit the `plugins` folder using `semgrep` and specific rules provided to the script. Audit results are stored inside a SQLite database.
+- **audit**: Audit the `plugins` folder using `semgrep` and specific rules provided to the script. Audit results are stored inside a SQLite database. Semgrep "raw" results are stored for the latest version of every plugin inside a `semgrep-scan` directory.
 - **both**: Run the script in download mode and then in audit mode.
 
 Information stored inside the `Plugins` db table:
@@ -86,5 +88,29 @@ options:
   --search SEARCH       Search term to filter plugins
   --config CONFIG       Semgrep config/rules to run (default: p/php) [audit mode only]
   --verbose             Print detailed messages
+
+$ python3 wp-plugin-downlauditor.py -m download -o test.db --author binarymoon
+2025-01-03 12:19:41,769 - INFO - Started downloading.
+2025-01-03 12:19:41,769 - INFO - Querying https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request[page]=1&request[per_page]=10&request[search]=&request[author]=binarymoon&request[tag]=
+2025-01-03 12:19:42,438 - INFO - Total plugins: 8
+2025-01-03 12:19:42,439 - INFO - Querying https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request[page]=1&request[per_page]=10&request[search]=&request[author]=binarymoon&request[tag]=
+2025-01-03 12:19:43,974 - INFO - Updated data inside the DB for browser-shots 1.7.7
+2025-01-03 12:19:44,702 - INFO - Updated data inside the DB for bm-custom-login 2.4.0
+2025-01-03 12:19:45,358 - INFO - Updated data inside the DB for front-page-category 3.3.5
+2025-01-03 12:19:46,624 - INFO - Updated data inside the DB for styleguide 1.8.1
+2025-01-03 12:19:47,463 - INFO - Updated data inside the DB for tada 1.2
+2025-01-03 12:19:48,868 - INFO - Updated data inside the DB for wp-toolbelt 3.6
+2025-01-03 12:19:49,546 - INFO - Updated data inside the DB for translate-words 1.2.6
+
+$ python3 wp-plugin-downlauditor.py -m download -o test.db --author boldgrid last-updated 12 --active-installs 5000
+2025-01-03 12:21:41,769 - INFO - Started downloading.
+...
+
+$ python3 wp-plugin-downlauditor.py -m audit -o test.db --verbose
+2025-01-03 12:30:45,844 - INFO - Started auditing.
+2025-01-03 12:30:45,845 - INFO - Found plugin boldgrid-easy-seo
+2025-01-03 12:30:45,845 - INFO - Latest version found: 1.6.16
+...
+2025-01-03 12:32:12,265 - INFO - Semgrep analysis completed for translate-words 1.2.6.
 ```
 

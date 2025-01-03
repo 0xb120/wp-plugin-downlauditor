@@ -11,15 +11,6 @@ from io import BytesIO
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-'''
-Test: 
-https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request[page]=1&request[per_page]=50&request[author]=boldgrid
-https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request[page]=1&request[per_page]=50&request[author]=binarymoon
-
-semgrep scan --config='p/php' --text-output=wpform-lite-1.9.2.3.txt --json-output=wpform-lite-1.9.2.3.json --sarif-output=wpform-lite-1.9.2.3.sarif
-
-'''
-
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
@@ -369,7 +360,7 @@ def audit_plugins(download_dir, config, output_db=False, verbose=False):
                     for item in json_content["results"]:
                         sql = f"""
                         INSERT OR IGNORE INTO {db_result_table} (slug, version, file_path, check_id, start_line, end_line, vuln_lines, message, triaged)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
                         """
 
                         data = (

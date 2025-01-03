@@ -11,6 +11,14 @@ from io import BytesIO
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
+'''
+TODO:
+    - Investigate why there after page 999 records start to duplicates
+    - Implement in the audit mode the possibility to audit only plugins from filters (using the Plugin table as a starting point)
+    - Implement the creation of the Plugin table when auditing plugins that do not have a Plugin record (pull data from WP API)
+    - Implement a recovery mechanism 
+'''
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,

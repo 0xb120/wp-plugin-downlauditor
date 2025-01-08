@@ -182,9 +182,9 @@ def download_plugins(search="", author="", tag="", download_dir=".", last_update
             # Check if the plugin has the minimum number of active installions
             try:
                 if int(plugin['active_installs']) < active_installs:
+                    # Plugins from WP API are sorted by active_installs. I can exit the loop after finding the first plugin without enaught active installs. 
                     if verbose==True:
                             logger.info(f"Skipping {plugin["slug"]}: not enaught active installs: {plugin["active_installs"]}/{active_installs}")
-                    # Plugins from WP API are sorted by active_installs. I can exit the loop after finding the first plugin without enaught active installs. 
                     break
                     #continue
             except:

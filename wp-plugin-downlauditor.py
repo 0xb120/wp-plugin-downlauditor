@@ -7,13 +7,14 @@ import zipfile
 import json
 import urllib.parse
 import sqlite3
+import time
 from io import BytesIO
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 '''
 TODO:
-    - Investigate why there after page 999 records start to duplicates
+    - Investigate why after page 999 records start to duplicates
     - Implement in the audit mode the possibility to audit only plugins from filters (using the Plugin table as a starting point)
     - Implement the creation of the Plugin table when auditing plugins that do not have a Plugin record (pull data from WP API)
     - Implement a recovery mechanism 
@@ -168,11 +169,11 @@ def download_plugins(search="", author="", tag="", download_dir=".", last_update
                 last_updated_datetime = datetime.strptime(plugin["last_updated"], "%Y-%m-%d %I:%M%p %Z")
                 today = datetime.now()
 
-                rdelta = relativedelta(today, last_updated_datetime)
+                delta = today - last_updated_datetime
 
-                if rdelta.months>last_updated:
+                if delta.days > (last_updated*30):
                     if verbose==True:
-                        logger.info(f"Skipping {plugin["slug"]}: updated last time on {plugin["last_updated"]}, delta from now is {rdelta.months}")
+                        logger.info(f"Skipping {plugin["slug"]}: updated last time on {plugin["last_updated"]}, delta from now is {int(delta.days/30)}")
                     continue
             except ValueError:
                 logger.error(f"Invalid date format for plugin {plugin["slug"]}: {plugin["last_updated"]}")
@@ -183,7 +184,9 @@ def download_plugins(search="", author="", tag="", download_dir=".", last_update
                 if int(plugin['active_installs']) < active_installs:
                     if verbose==True:
                             logger.info(f"Skipping {plugin["slug"]}: not enaught active installs: {plugin["active_installs"]}/{active_installs}")
-                    continue
+                    # Plugins from WP API are sorted by active_installs. I can exit the loop after finding the first plugin without enaught active installs. 
+                    break
+                    #continue
             except:
                 logger.error(f"Invalid active installs format for plugin {plugin["slug"]}: {plugin["active_installs"]}")
                 continue
@@ -265,23 +268,33 @@ def save_plugin(plugin, download_dir, verbose=False):
         logger.error(f"Failed to unzip {slug}: Not a zip file or corrupt zip file")
         return 1
 
-def query_wp_api(page=1, per_page=10, search="", author="", tag=""):
+def query_wp_api(page=1, per_page=25, search="", author="", tag=""):
     '''
     API documentation: https://developer.wordpress.org/reference/functions/plugins_api/
+    Note: Plugins are ordered by install DESC
     '''
     url = f"https://api.wordpress.org/plugins/info/1.2/?action=query_plugins&request[page]={page}&request[per_page]={per_page}&request[search]={urllib.parse.quote_plus(search)}&request[author]={urllib.parse.quote_plus(author)}&request[tag]={urllib.parse.quote_plus(tag)}"
     logger.info(f"Querying {url}")
 
-    try:
-        response = requests.get(url, timeout=timeout)
+    exception_occured = True
 
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logger.error(f"Failed to retrieve page {page}: {response.status_code}")
-            return None
-    except requests.RequestException as e:
-        logger.error(f"Failed to send request: {e}")
+    while exception_occured:
+        try:
+            if exception_occured == True:
+                exception_occured == False
+
+            response = requests.get(url, timeout=timeout)
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"Failed to retrieve page {page}: {response.status_code}")
+                return None
+        except requests.RequestException as e:
+            logger.error(f"Failed to send request: {e}. Retrying...")
+            exception_occured = True
+            time.sleep(3)
+
 
 def audit_plugins(download_dir, config, output_db=False, verbose=False):
     

@@ -52,6 +52,10 @@ slug VARCHAR(255)
 version VARCHAR(255)
 file_path VARCHAR(255)
 check_id VARCHAR(255)
+severity VARCHAR(25)
+impact VARCHAR(25)
+likelihood VARCHAR(25)
+confidence VARCHAR(25)
 start_line INT
 end_line INT
 vuln_lines TEXT

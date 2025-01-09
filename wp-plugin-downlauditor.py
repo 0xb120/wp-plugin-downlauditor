@@ -136,6 +136,10 @@ def create_audit_table(cur):
             version VARCHAR(255),
             file_path VARCHAR(255),
             check_id VARCHAR(255),
+            severity VARCHAR(25),
+            impact VARCHAR(25),
+            likelihood VARCHAR(25),
+            confidence VARCHAR(25),
             start_line INT,
             end_line INT,
             vuln_lines TEXT,
@@ -188,8 +192,8 @@ def insert_plugins_row(con, cur, plugin):
 
 def insert_result_row(con, cur, item, plugin, last_version):
     sql = f"""
-    INSERT OR IGNORE INTO {db_result_table} (slug, version, file_path, check_id, start_line, end_line, vuln_lines, message, date_discovered, triaged)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    INSERT OR IGNORE INTO {db_result_table} (slug, version, file_path, check_id, severity, impact, likelihood, confidence, start_line, end_line, vuln_lines, message, date_discovered, triaged)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """
 
     data = (
@@ -197,6 +201,10 @@ def insert_result_row(con, cur, item, plugin, last_version):
         last_version,
         item['path'],
         item['check_id'],
+        item['extra']['severity'],
+        item['extra']['metadata']['impact'],
+        item['extra']['metadata']['likelihood'],
+        item['extra']['metadata']['confidence'],
         item['start']['line'],
         item['end']['line'],
         item['extra']['lines'],
@@ -478,6 +486,7 @@ def audit_plugins(download_dir, config, author, last_updated, active_installs, s
             "--sarif-output",
             "{}".format(scan_result_file+".sarif"),
             "--no-git-ignore",
+            "--dataflow-traces",
             "--quiet",  # Suppress non-essential output
             scan_path
         ]

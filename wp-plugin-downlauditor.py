@@ -433,7 +433,7 @@ def audit_plugins(download_dir, config, author, last_updated, active_installs, s
         create_plugins_table(cur)
         create_audit_table(cur)
 
-    # If con exists, I can apply filters on the already existing db, otherwise I must scan the entire plugins folder
+    # If con exists, I can apply filters on the already existing db
     if (author or last_updated or active_installs) and con is not None:
         plugins_slugs = get_filtered_plugins(con, author, last_updated, active_installs)
         plugins_folder = os.scandir(os.path.join(download_dir, "plugins"))
@@ -443,7 +443,11 @@ def audit_plugins(download_dir, config, author, last_updated, active_installs, s
                 for slug in plugins_slugs:
                     if item.name == slug[0]:
                         plugins.append(item)
-    else:
+    
+    # If I didn't find any plugin using filters and the DB, fallback to scan the plugins folder
+    if len(plugins) == 0:
+        if con is not None:
+            logger.warning("No plugins found on the current db using filters. Checking the plugins directory...")
         plugins = os.scandir(os.path.join(download_dir, "plugins"))
 
     for plugin_dir in plugins:

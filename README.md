@@ -81,7 +81,7 @@ options:
   -d DOWNLOAD_DIR, --download-dir DOWNLOAD_DIR
                         Directory containing the plugins folder (default: current directory)
   --db SQLITE_DB        Store plugins and audits data inside the specified SQLite database
-  --clear-results       Clear the audit database before running
+  --clear-results       Clear the audit table before running
   --last-updated LAST_UPDATED
                         Max number of months passed from the last_update (default: 24 months)
   --active-installs ACTIVE_INSTALLS

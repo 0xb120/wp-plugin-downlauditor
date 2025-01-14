@@ -8,6 +8,8 @@ import json
 import urllib.parse
 import sqlite3
 import time
+import re
+from tqdm import tqdm
 from io import BytesIO
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
@@ -58,7 +60,7 @@ def parse_arguments():
         "--clear-results",
         action="store_true", 
         default=False,
-        help="Clear the audit database before running"
+        help="Clear the Audit table before running"
     )   
     parser.add_argument(
         "--last-updated",
@@ -262,21 +264,7 @@ def get_filtered_plugins(con, author=None, last_updated=24, active_installs=5000
 
 def download_plugins(search="", author="", tag="", download_dir=".", last_updated=24, active_installs=5000, sqlite_db=False, verbose=False):
 
-    # Get the first page to find out the total number of pages
-    data = query_wp_api(page=1, search=search, author=author, tag=tag)
-
-    if not data or "info" not in data:
-        logger.error("Failed to retrieve plugins information.")
-        return
-
-    total_pages = data["info"]["pages"]
-    total_plugins = data["info"]["results"]
-
-    if total_plugins == 0:
-        logger.info("No plugins found.")
-        return
-    
-    logger.info("Total plugins: "+str(total_plugins))
+    slug_list = []
 
     # Create the plugins directory
     os.makedirs(os.path.join(download_dir, "plugins"), exist_ok=True)
@@ -287,50 +275,65 @@ def download_plugins(search="", author="", tag="", download_dir=".", last_update
         cur = con.cursor()
         create_plugins_table(cur)
 
-    # Iterate through the pages
-    for page in range(1, total_pages + 1):
-        if verbose:
-            logger.info(f"Page {page}/{total_pages}.")
+    if author == "" and tag == "" and search == "":
+        # Get the list from SVN so we have a full list of slugs ever existed online
+        slug_list = get_slugs_from_svn()
+        total_plugins = len(slug_list)
+    else:
+        # Get the list from the WP API because we have to apply specific search filter
+        data = get_slugs_from_svn_wp_api(page=1, search=search, author=author, tag=tag)
+        total_pages = data["info"]["pages"]
+        total_plugins = data["info"]["results"]
+        for page in range(1, total_pages + 1):
+            data = get_slugs_from_svn_wp_api(page=page, search=search, author=author, tag=tag)
+            for record in data["plugins"]:
+                slug_list.append(record["slug"])
 
-        data = query_wp_api(page=page, search=search, author=author, tag=tag)
+    if total_plugins == 0:
+        logger.info("No plugins found.")
+        return
+    
+    logger.info("Total plugins: "+str(total_plugins))
 
-        if not data or "plugins" not in data:
-            break
+    for slug in tqdm(slug_list, desc="Processing plugins"):
+        # Querying wordpress APIs to get plugin's information
+        plugin = get_wp_plugin(slug, verbose)
+        if plugin is None:
+            continue
+
+        # Check if the plugin was last updated in the last_update range
+        try:
+            # Parse the date format 'YYYY-MM-DD HH:MMpm GMT'
+            last_updated_datetime = datetime.strptime(plugin["last_updated"], "%Y-%m-%d %I:%M%p %Z")
+            today = datetime.now()
+
+            delta = today - last_updated_datetime
+
+            if delta.days > (last_updated*30):
+                if verbose==True:
+                    logger.info(f"Skipping {plugin["slug"]}: updated last time on {plugin["last_updated"]}, delta from now is {int(delta.days/30)}")
+                continue
+        except ValueError:
+            logger.error(f"Invalid date format for plugin {plugin["slug"]}: {plugin["last_updated"]}")
+            continue
         
-        for plugin in data["plugins"]:
-            # Check if the plugin was last updated in the last_update range
-            try:
-                # Parse the date format 'YYYY-MM-DD HH:MMpm GMT'
-                last_updated_datetime = datetime.strptime(plugin["last_updated"], "%Y-%m-%d %I:%M%p %Z")
-                today = datetime.now()
-
-                delta = today - last_updated_datetime
-
-                if delta.days > (last_updated*30):
-                    if verbose==True:
-                        logger.info(f"Skipping {plugin["slug"]}: updated last time on {plugin["last_updated"]}, delta from now is {int(delta.days/30)}")
-                    continue
-            except ValueError:
-                logger.error(f"Invalid date format for plugin {plugin["slug"]}: {plugin["last_updated"]}")
+        # Check if the plugin has the minimum number of active installions
+        try:
+            if int(plugin['active_installs']) < active_installs:
+                if verbose==True:
+                        logger.info(f"Skipping {plugin["slug"]}: not enaught active installs: {plugin["active_installs"]}/{active_installs}")
                 continue
-            
-            # Check if the plugin has the minimum number of active installions
-            try:
-                if int(plugin['active_installs']) < active_installs:
-                    if verbose==True:
-                            logger.info(f"Skipping {plugin["slug"]}: not enaught active installs: {plugin["active_installs"]}/{active_installs}")
-                    continue
-            except:
-                logger.error(f"Invalid active installs format for plugin {plugin["slug"]}: {plugin["active_installs"]}")
-                continue
-            
-            # Download and extract the plugin
-            error_saving = save_plugin(plugin, download_dir, verbose)
-            if error_saving:
-                continue
+        except:
+            logger.error(f"Invalid active installs format for plugin {plugin["slug"]}: {plugin["active_installs"]}")
+            continue
+        
+        # Download and extract the plugin
+        error_saving = save_plugin(plugin, download_dir, verbose)
+        if error_saving:
+            continue
 
-            if sqlite_db:
-                insert_plugins_row(con, cur, plugin)
+        if sqlite_db:
+            insert_plugins_row(con, cur, plugin)
 
     if sqlite_db:
         con.close()    
@@ -369,7 +372,32 @@ def save_plugin(plugin, download_dir, verbose=False):
         logger.error(f"Failed to unzip {slug}: Not a zip file or corrupt zip file")
         return 1
 
-def query_wp_api(page=1, per_page=25, search="", author="", tag=""):
+def get_slugs_from_svn():
+    # Request plugins.svn.wordpress.org and extract EVERY plugin's slug ever existed
+    url = "https://plugins.svn.wordpress.org/"
+    logger.info(f"Querying {url}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "en-GB,en;q=0.9,it-IT;q=0.8,it;q=0.7,en-US;q=0.6",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=timeout)
+        if response.status_code == 200:
+            slug_list = re.findall(r'<a href="[^"]+">([^<]+)/</a>', response.text)
+            return slug_list
+        else:
+            logger.error(f"Failed to retrieve plugins from SVN: HTTP {response.status_code}")
+            return None
+    except requests.RequestException as e:
+            logger.error(f"Failed to send request: {e}.")
+            return None
+
+def get_slugs_from_svn_wp_api(page=1, per_page=25, search="", author="", tag=""):
     '''
     API documentation: https://developer.wordpress.org/reference/functions/plugins_api/
     Note: Plugins are ordered by install DESC
@@ -403,6 +431,7 @@ def get_wp_plugin(slug, verbose):
         logger.info(f"Querying {url}")
 
     exception_occured = True
+    sleep = 10
 
     while exception_occured:
         try:
@@ -413,14 +442,27 @@ def get_wp_plugin(slug, verbose):
 
             if response.status_code == 200:
                 return response.json()
+            elif response.status_code == 404:
+                if response.json()["error"] != "closed":
+                    if verbose == True:
+                        logger.error(f"Failed to retrieve {slug}: {response.json()["error"]}")
+                    return None
+                else:
+                    if verbose == True:
+                        logger.error(f"Failed to retrieve {slug}: {response.json()["description"]} ")
+                    return None
             else:
-                logger.error(f"Failed to retrieve response: {response.status_code}")
-                return None
-
+                    raise Exception(f"Failed to retrieve response: HTTP {response.status_code}")
+                
         except requests.RequestException as e:
-            logger.error(f"Failed to send request: {e}. Retrying...")
+            logger.error(f"Failed to send request: {e}. Retrying in {sleep} seconds...")
             exception_occured = True
-            time.sleep(3)
+            time.sleep(sleep)
+            sleep +=10
+        except Exception as e:
+            exception_occured = True
+            time.sleep(sleep)
+            sleep +=10
 
 def audit_plugins(download_dir, config, author, last_updated, active_installs, sqlite_db=False, verbose=False):
     

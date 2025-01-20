@@ -341,6 +341,8 @@ def download_plugins(search="", author="", tag="", download_dir=".", last_update
 def save_plugin(plugin, download_dir, verbose=False):
     slug = plugin['slug']
     version = plugin['version']
+    pattern = r'[^a-zA-Z0-9._-]'
+    version = re.sub(pattern, '', version)
     download_link = plugin['download_link']
 
     # Download and extract the plugin in versions folders
